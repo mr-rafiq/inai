@@ -1,0 +1,47 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      // Background task that starts the Vite dev server. The problemMatcher
+      // tells VS Code the server is "ready" once Vite prints its Local URL, so
+      // the Chrome debug config waits for it before opening the browser.
+      "label": "inai: vite dev",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": {
+          "regexp": "^\\s*$",
+          "file": 1,
+          "location": 2,
+          "message": 3
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*VITE.*",
+          "endsPattern": ".*Local:.*http.*"
+        }
+      },
+      "presentation": { "reveal": "always", "panel": "dedicated", "group": "inai" }
+    },
+    {
+      // Convenience: install everything (wraps ./build.sh).
+      "label": "inai: build",
+      "type": "shell",
+      "command": "./build.sh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      // Convenience: run the full test suite (wraps ./test.sh).
+      "label": "inai: test",
+      "type": "shell",
+      "command": "./test.sh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    }
+  ]
+}

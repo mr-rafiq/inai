@@ -1,0 +1,68 @@
+{
+  // Inai (இணை) — run & debug configs.
+  // Requires: ./build.sh run once (creates backend/.venv and installs deps).
+  // VS Code extensions: "Python" (ms-python.python) + "JS Debugger" (built-in).
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Debug the FastAPI backend with breakpoints. No --reload here because the
+      // reloader spawns a child process the debugger won't attach to; use
+      // ./run.sh for hot-reload during normal dev.
+      "name": "Inai: Backend (FastAPI)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+      "cwd": "${workspaceFolder}/backend",
+      "python": "${workspaceFolder}/backend/.venv/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "INAI_PROVIDER": "mock",
+        "INAI_GRAPH_BACKEND": "json"
+      }
+    },
+    {
+      // Debug the backend test suite.
+      "name": "Inai: Backend tests (pytest)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-v"],
+      "cwd": "${workspaceFolder}/backend",
+      "python": "${workspaceFolder}/backend/.venv/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      // Debug the frontend in Chrome. preLaunchTask starts the Vite dev server
+      // (which proxies /api and /ws to the backend on :8000).
+      "name": "Inai: Frontend (Chrome)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/frontend/src",
+      "preLaunchTask": "inai: vite dev",
+      "sourceMaps": true
+    },
+    {
+      // Same as above but for the Edge browser.
+      "name": "Inai: Frontend (Edge)",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/frontend/src",
+      "preLaunchTask": "inai: vite dev",
+      "sourceMaps": true
+    }
+  ],
+  "compounds": [
+    {
+      // One click: backend (debuggable) + frontend in Chrome.
+      "name": "Inai: Full stack",
+      "configurations": ["Inai: Backend (FastAPI)", "Inai: Frontend (Chrome)"],
+      "stopAll": true,
+      "presentation": { "group": "inai", "order": 1 }
+    }
+  ]
+}
