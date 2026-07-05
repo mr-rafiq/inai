@@ -124,7 +124,17 @@ class MockLLMClient:
         for needle, canned in self.scripted.items():
             if needle in user:
                 return canned
-        return f"(mock) You said: {user.strip()[:200]}"
+        # Grounded answers: when the orchestrator hands us memory facts, use them.
+        if "MEMORY FACTS:" in system:
+            facts = system.split("MEMORY FACTS:", 1)[1].strip()
+            lines = [ln.strip() for ln in facts.splitlines() if ln.strip()]
+            if lines and "(nothing relevant" not in facts:
+                pretty = "; ".join(
+                    ln.replace("-", " ").replace(">", "").replace("  ", " ") for ln in lines[:6]
+                )
+                return f"Here's what I remember: {pretty}."
+            return "I don't have anything about that in memory yet — tell me and I'll remember it."
+        return f"I hear you: “{user.strip()[:200]}”. (I'm the offline demo model — point Inai at Ollama or a cloud model in Settings for real conversation.)"
 
     def stream(self, messages: list[Message], **kw) -> Iterator[str]:
         for token in re.findall(r"\S+\s*", self.complete(messages, **kw)):

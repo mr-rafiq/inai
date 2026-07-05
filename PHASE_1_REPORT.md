@@ -38,8 +38,21 @@ already shows the signature **floating orb** reacting to the assistant's state.
   thin wrapper — no architecture change.
 - **F13 semantic/vector recall:** PRD marks it Phase 1-stretch/Phase 3. A
   deterministic `embed()` exists on the client for later use.
-- **F5 onboarding wizard:** basic config is file/env driven; a UI wizard is a small
-  follow-up.
+
+**Added after initial Phase 1 sign-off (UI overhaul):**
+- **F5 onboarding wizard** — first-run flow: who you are (seeds the graph from
+  your own words) → provider/model picker with live Ollama model list +
+  connection test (`frontend/src/components/Onboarding/`).
+- **Settings panel** — runtime provider/model/api-base/temperature switching,
+  persisted to `inai.toml` via `PUT /api/config`; `POST /api/config/test` verifies
+  the provider; `GET /api/models` lists installed local models.
+- **Cinematic Three.js orb** — react-three-fiber shader orb (simplex-noise
+  surface, fresnel glow, particle field), interactive (cursor parallax, hover,
+  click pulse), with automatic CSS fallback for no-WebGL / reduced-motion.
+- **Grounded mock answers** — the offline demo model now answers questions from
+  the retrieved memory facts instead of echoing.
+- **Startup resilience** — memory panel and profile fetches retry with backoff
+  (fixes the "graph 500" seen when the frontend loaded before the backend).
 
 ---
 

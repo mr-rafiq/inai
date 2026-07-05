@@ -113,6 +113,25 @@ class Config:
         return d
 
 
+# Fields the user may change at runtime from the UI (F3/F5). Server/storage
+# fields stay file-managed to avoid footguns.
+UPDATABLE_FIELDS = {"provider", "model", "fast_model", "api_base", "temperature", "request_timeout"}
+
+
+def save_config(cfg: Config) -> Path:
+    """Persist user-tunable settings to <repo>/inai.toml (never secrets)."""
+    path = _repo_root() / "inai.toml"
+    lines = ["# Inai settings — managed by the app (Settings panel). Safe to edit.", "[inai]"]
+    for key in sorted(UPDATABLE_FIELDS) + ["graph_backend"]:
+        val = getattr(cfg, key)
+        if isinstance(val, str):
+            lines.append(f'{key} = "{val}"')
+        else:
+            lines.append(f"{key} = {val}")
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
 def load_config(overrides: dict[str, Any] | None = None) -> Config:
     """Build a Config from defaults <- toml <- env <- explicit overrides."""
     values = dict(_DEFAULTS)

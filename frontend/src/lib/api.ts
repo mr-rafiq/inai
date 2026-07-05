@@ -25,3 +25,67 @@ export function wsUrl(): string {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   return `${proto}://${location.host}/ws`;
 }
+
+// ---- profile / onboarding --------------------------------------------------
+
+export interface Profile {
+  name: string;
+  about: string;
+  onboarded: boolean;
+}
+
+export async function getProfile(): Promise<Profile> {
+  const r = await fetch(`${base}/api/profile`);
+  if (!r.ok) throw new Error(`profile ${r.status}`);
+  return r.json();
+}
+
+export async function saveProfile(name: string, about: string): Promise<Profile> {
+  const r = await fetch(`${base}/api/profile`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, about }),
+  });
+  if (!r.ok) throw new Error(`profile ${r.status}`);
+  return r.json();
+}
+
+// ---- settings ---------------------------------------------------------------
+
+export interface AppConfig {
+  provider: string;
+  model: string;
+  fast_model: string;
+  api_base: string;
+  temperature: number;
+  is_cloud: boolean;
+  has_api_key: boolean;
+}
+
+export async function getConfig(): Promise<AppConfig> {
+  const r = await fetch(`${base}/api/config`);
+  if (!r.ok) throw new Error(`config ${r.status}`);
+  return r.json();
+}
+
+export async function updateConfig(patch: Partial<AppConfig>): Promise<AppConfig> {
+  const r = await fetch(`${base}/api/config`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new Error(`config ${r.status}`);
+  return r.json();
+}
+
+export async function getModels(provider: string): Promise<{ models: string[]; source: string }> {
+  const r = await fetch(`${base}/api/models?provider=${encodeURIComponent(provider)}`);
+  if (!r.ok) throw new Error(`models ${r.status}`);
+  return r.json();
+}
+
+export async function testConnection(): Promise<{ ok: boolean; llm: string; error?: string }> {
+  const r = await fetch(`${base}/api/config/test`, { method: "POST" });
+  if (!r.ok) throw new Error(`test ${r.status}`);
+  return r.json();
+}

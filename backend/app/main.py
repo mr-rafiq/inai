@@ -18,9 +18,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .config import Config, load_config
+from .config import Config, load_config, save_config, UPDATABLE_FIELDS
 from .llm.client import get_llm_client, MockLLMClient, LLMConfigError, LLMClient
+from .llm.catalog import list_models
 from .brain.store import get_graph_store, GraphStore
+from .brain.ingest import ingest
 from .agent.orchestrator import Orchestrator
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -35,6 +37,20 @@ class NodePatch(BaseModel):
     name: str | None = None
     type: str | None = None
     props: dict[str, Any] | None = None
+
+
+class ConfigPatch(BaseModel):
+    provider: str | None = None
+    model: str | None = None
+    fast_model: str | None = None
+    api_base: str | None = None
+    temperature: float | None = None
+    request_timeout: int | None = None
+
+
+class ProfileIn(BaseModel):
+    name: str
+    about: str = ""
 
 
 class AppState:
@@ -88,6 +104,64 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None) -> Fa
     @app.get("/api/config")
     def get_config() -> dict[str, Any]:
         return state.cfg.to_public_dict()
+
+    @app.put("/api/config")
+    def update_config(patch: ConfigPatch) -> dict[str, Any]:
+        """Runtime settings update (F3/F5): apply, persist, rebuild the LLM."""
+        changes = {k: v for k, v in patch.model_dump(exclude_none=True).items()
+                   if k in UPDATABLE_FIELDS}
+        for key, val in changes.items():
+            setattr(state.cfg, key, val)
+        if changes:
+            save_config(state.cfg)
+            state.llm = _build_llm(state.cfg)
+            state.orchestrator = Orchestrator(state.store, state.llm)
+            log.info("config updated: %s -> llm=%s", changes, state.llm.name)
+        return state.cfg.to_public_dict()
+
+    @app.post("/api/config/test")
+    def test_llm() -> dict[str, Any]:
+        """Try one tiny completion so the UI can verify the provider works."""
+        try:
+            out = state.llm.complete(
+                [{"role": "user", "content": "Reply with the single word: ok"}],
+            )
+            return {"ok": True, "llm": state.llm.name, "reply": (out or "")[:80]}
+        except Exception as exc:
+            return {"ok": False, "llm": state.llm.name, "error": str(exc)[:300]}
+
+    @app.get("/api/models")
+    def models(provider: str | None = None) -> dict[str, Any]:
+        return list_models(provider or state.cfg.provider, state.cfg.api_base)
+
+    @app.get("/api/profile")
+    def get_profile() -> dict[str, Any]:
+        me = state.store.ensure_self()
+        return {
+            "name": me.props.get("display_name", ""),
+            "about": me.props.get("about", ""),
+            "onboarded": bool(me.props.get("onboarded")),
+        }
+
+    @app.post("/api/profile")
+    def save_profile(body: ProfileIn) -> dict[str, Any]:
+        """Onboarding (F5): store who the user is and seed the brain from it."""
+        me = state.store.ensure_self()
+        state.store.update_node(me.id, props={
+            "display_name": body.name.strip(),
+            "about": body.about.strip(),
+            "onboarded": True,
+        })
+        seeded = {"nodes_created": [], "edges_created": []}
+        if body.about.strip():
+            seeded = ingest(body.about, state.store, state.llm)
+        return {
+            "name": body.name.strip(),
+            "about": body.about.strip(),
+            "onboarded": True,
+            "seeded_nodes": len(seeded["nodes_created"]),
+            "seeded_edges": len(seeded["edges_created"]),
+        }
 
     @app.post("/api/chat")
     async def chat(body: ChatIn) -> dict[str, Any]:
