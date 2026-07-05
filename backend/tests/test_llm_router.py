@@ -47,3 +47,20 @@ def test_mock_scripted_response():
     m = MockLLMClient(scripted={"weather": "It is sunny."})
     out = m.complete([{"role": "user", "content": "hows the weather"}])
     assert out == "It is sunny."
+
+
+def test_friendly_llm_errors_are_actionable():
+    from app.llm.client import friendly_llm_error
+
+    assert "ollama serve" in friendly_llm_error(
+        "ollama", "litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused"
+    )
+    assert "Developer tab" in friendly_llm_error(
+        "lmstudio", "APIConnectionError: Connection refused"
+    )
+    assert "OPENAI_API_KEY" in friendly_llm_error(
+        "openai", "OpenAIException - Missing credentials. Please pass an `api_key`"
+    )
+    assert "ollama pull" in friendly_llm_error("ollama", 'model "qwen9" not found')
+    # unknown errors pass through untouched
+    assert friendly_llm_error("openai", "some novel failure") == "some novel failure"

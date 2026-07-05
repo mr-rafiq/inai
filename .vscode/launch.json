@@ -16,11 +16,9 @@
       "cwd": "${workspaceFolder}/backend",
       "python": "${workspaceFolder}/backend/.venv/bin/python",
       "console": "integratedTerminal",
-      "justMyCode": false,
-      "env": {
-        "INAI_PROVIDER": "mock",
-        "INAI_GRAPH_BACKEND": "json"
-      }
+      "justMyCode": false
+      // No INAI_* env overrides here — they would silently override the
+      // provider/model you picked in the app (saved to inai.toml).
     },
     {
       // Debug the backend test suite.

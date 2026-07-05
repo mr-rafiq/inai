@@ -19,7 +19,7 @@ from typing import Any, AsyncIterator
 from ..brain.ingest import ingest
 from ..brain.retrieve import answer_question
 from ..brain.store import GraphStore
-from ..llm.client import LLMClient
+from ..llm.client import LLMClient, friendly_llm_error
 
 log = logging.getLogger("inai.agent")
 
@@ -120,7 +120,12 @@ class Orchestrator:
 
         except Exception as exc:  # never crash the socket
             log.exception("turn failed")
-            yield TurnEvent("error", f"Sorry — I hit a problem: {exc}", {"intent": intent.value})
+            provider = getattr(getattr(self.llm, "cfg", None), "provider", "") or ""
+            yield TurnEvent(
+                "error",
+                f"Sorry — {friendly_llm_error(provider, str(exc))}",
+                {"intent": intent.value},
+            )
 
     def _memory_summary(self, result: dict[str, Any]) -> str:
         nodes = result["nodes_created"]

@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .config import Config, load_config, save_config, UPDATABLE_FIELDS
-from .llm.client import get_llm_client, MockLLMClient, LLMConfigError, LLMClient
+from .llm.client import get_llm_client, MockLLMClient, LLMConfigError, LLMClient, friendly_llm_error
 from .llm.catalog import list_models
 from .brain.store import get_graph_store, GraphStore
 from .brain.ingest import ingest
@@ -128,7 +128,11 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None) -> Fa
             )
             return {"ok": True, "llm": state.llm.name, "reply": (out or "")[:80]}
         except Exception as exc:
-            return {"ok": False, "llm": state.llm.name, "error": str(exc)[:300]}
+            return {
+                "ok": False,
+                "llm": state.llm.name,
+                "error": friendly_llm_error(state.cfg.provider, str(exc))[:300],
+            }
 
     @app.get("/api/models")
     def models(provider: str | None = None) -> dict[str, Any]:

@@ -184,3 +184,24 @@ def get_llm_client(cfg: Config) -> LLMClient:
 
 class LLMConfigError(RuntimeError):
     """Raised when the selected provider cannot be used as configured."""
+
+
+def friendly_llm_error(provider: str, error: str) -> str:
+    """Translate raw provider/litellm errors into actionable guidance."""
+    e = error.lower()
+    if "connection refused" in e or "errno 61" in e or "connecterror" in e or "connection error" in e:
+        if provider == "ollama":
+            return ("Ollama isn't running. Start it (open the Ollama app or run "
+                    "`ollama serve` in a terminal), then test again.")
+        if provider == "lmstudio":
+            return ("LM Studio's local server isn't running. In LM Studio open the "
+                    "Developer tab and start the server (port 1234), then test again.")
+        return "Can't reach the model server — make sure it's running, then test again."
+    if "missing credentials" in e or "authentication" in e or "invalid api key" in e or "api_key" in e:
+        if provider in ("openai", "anthropic"):
+            return (f"No API key found for {provider}. Set {provider.upper()}_API_KEY in the "
+                    "environment Inai was started from, then restart it.")
+        return "The model server rejected the request credentials — restart Inai and try again."
+    if ("not found" in e or "no such model" in e) and provider == "ollama":
+        return "That model isn't installed in Ollama yet. Run: ollama pull <model-name>."
+    return error
