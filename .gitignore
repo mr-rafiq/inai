@@ -1,0 +1,32 @@
+# Inai
+inai.toml
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+.uv/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+.vite/
+coverage/
+playwright-report/
+test-results/
+
+# tsc -b build artifacts (composite project emit)
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/playwright.config.js
+frontend/playwright.config.d.ts
+
+# OS / editor
+.DS_Store
+.idea/
+*.log

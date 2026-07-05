@@ -1,0 +1,24 @@
+# Inai configuration — copy to `inai.toml` and edit.
+# Every value can also be set via env var: INAI_<KEY> (e.g. INAI_PROVIDER=openai).
+# Secrets (API keys) are NEVER stored here — set them as environment variables.
+
+[inai]
+# --- LLM -------------------------------------------------------------------
+provider   = "ollama"        # ollama | lmstudio | openai | anthropic | mock
+model      = "llama3.2"      # default local model to target
+fast_model = ""              # optional smaller model for the instant ack ("" = reuse model)
+api_base   = ""              # override endpoint (e.g. remote Ollama / LM Studio)
+temperature = 0.2
+request_timeout = 60         # seconds — never hang the UI
+
+# --- Storage ---------------------------------------------------------------
+graph_backend = "kuzu"       # kuzu (embedded) | json (zero-dep fallback)
+data_dir = ""                # "" -> <repo>/data
+
+# --- Server ----------------------------------------------------------------
+host = "127.0.0.1"
+port = 8000
+
+# Cloud keys go in the environment, e.g.:
+#   export OPENAI_API_KEY=sk-...
+#   export ANTHROPIC_API_KEY=sk-ant-...

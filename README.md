@@ -62,7 +62,7 @@ Run `./build.sh` first, then `./run.sh`. Each script accepts `--help`.
 
 Built phase by phase per the PRD:
 
-- **Phase 1 — Foundation (text-only brain):** in progress
+- **Phase 1 — Foundation (text-only brain):** ✅ complete — see [PHASE_1_REPORT.md](PHASE_1_REPORT.md)
 - **Phase 2 — Voice:** planned
 - **Phase 3 — Generative UI:** planned
 
