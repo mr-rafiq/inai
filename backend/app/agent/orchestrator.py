@@ -20,6 +20,7 @@ from ..brain.ingest import ingest
 from ..brain.retrieve import answer_question
 from ..brain.store import GraphStore
 from ..llm.client import LLMClient, friendly_llm_error
+from ..tools.files import handle_file_query, is_file_query
 
 log = logging.getLogger("inai.agent")
 
@@ -30,13 +31,15 @@ class Intent(str, Enum):
     UI_REQUEST = "ui_request"
     ACTION = "action"
     CHIT_CHAT = "chit_chat"
+    FILE_QUERY = "file_query"
 
 
 # Deterministic keyword heuristics keep intent routing testable without a model.
 _QUESTION_RE = re.compile(r"^\s*(what|who|when|where|which|how|why|do|does|did|is|are|can|could|tell me|show me)\b", re.I)
 _UI_RE = re.compile(r"\b(show|display|render|open|view|board|dashboard|timeline|map)\b", re.I)
 _MEMORY_RE = re.compile(
-    r"\b(remember|i'm|i am|i'?ve|i have|my |note that|remind me that|i like|i prefer|i watched|i read|i met|learning)\b",
+    r"\b(remember|i'm|i am|i'?ve|i have|my |note that|remind me that|i like|i prefer"
+    r"|i watched|i read|i met|i know|i work|i live|i bought|i spent|we |learning)\b",
     re.I,
 )
 _CHITCHAT_RE = re.compile(r"^\s*(hi|hey|hello|thanks|thank you|good (morning|night|evening)|bye)\b", re.I)
@@ -47,6 +50,8 @@ def classify_intent(text: str) -> Intent:
     t = text.strip()
     if _CHITCHAT_RE.search(t) and len(t.split()) <= 4:
         return Intent.CHIT_CHAT
+    if is_file_query(t):
+        return Intent.FILE_QUERY
     is_question = t.endswith("?") or bool(_QUESTION_RE.search(t))
     if _UI_RE.search(t) and (is_question or t.lower().startswith(("show", "display", "open", "render"))):
         return Intent.UI_REQUEST
@@ -64,6 +69,7 @@ _ACKS = {
     Intent.UI_REQUEST: "Sure — pulling that together…",
     Intent.ACTION: "On it…",
     Intent.CHIT_CHAT: "…",
+    Intent.FILE_QUERY: "Let me look at your files…",
 }
 
 
@@ -83,7 +89,7 @@ class Orchestrator:
         self.store = store
         self.llm = llm
 
-    async def handle_turn(self, text: str) -> AsyncIterator[TurnEvent]:
+    async def handle_turn(self, text: str, turn_id: str | None = None) -> AsyncIterator[TurnEvent]:
         """Yield the two-tier response for one user message."""
         intent = classify_intent(text)
         log.info("turn intent=%s text=%r", intent.value, text)
@@ -94,8 +100,7 @@ class Orchestrator:
         # Tier 2: the deep path.
         try:
             if intent is Intent.MEMORY_WRITE:
-                result = ingest(text, self.store, self.llm)
-                n, e = len(result["nodes_created"]), len(result["edges_created"])
+                result = ingest(text, self.store, self.llm, source_turn=turn_id)
                 summary = self._memory_summary(result)
                 yield TurnEvent("result", summary, {
                     "intent": intent.value,
@@ -111,12 +116,38 @@ class Orchestrator:
                     "facts": res["facts"],
                 })
 
-            else:  # CHIT_CHAT / ACTION fallback -> conversational reply
+            elif intent is Intent.FILE_QUERY:
+                findings = handle_file_query(text)
+                reply = self.llm.complete([
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are Inai. Answer the user's question about their files using "
+                            "ONLY the findings below. Be concise and helpful.\n\nFINDINGS:\n" + findings
+                        ),
+                    },
+                    {"role": "user", "content": text},
+                ])
+                yield TurnEvent("result", reply, {"intent": intent.value, "findings": findings[:4000]})
+
+            else:  # CHIT_CHAT / ACTION -> conversational reply…
                 reply = self.llm.complete([
                     {"role": "system", "content": "You are Inai, a warm, concise personal assistant."},
                     {"role": "user", "content": text},
                 ])
-                yield TurnEvent("result", reply, {"intent": intent.value})
+                # …but never let facts slip away: quietly extract memories too,
+                # so "I know a person, Pavi" is remembered even in small talk.
+                extracted: dict = {"nodes_created": [], "edges_created": []}
+                if len(text.split()) >= 4:
+                    try:
+                        extracted = ingest(text, self.store, self.llm, source_turn=turn_id)
+                    except Exception:
+                        log.warning("opportunistic extraction failed", exc_info=True)
+                yield TurnEvent("result", reply, {
+                    "intent": intent.value,
+                    "nodes_created": extracted["nodes_created"],
+                    "edges_created": extracted["edges_created"],
+                })
 
         except Exception as exc:  # never crash the socket
             log.exception("turn failed")
@@ -134,6 +165,6 @@ class Orchestrator:
         names = ", ".join(f"{n['name']} ({n['type']})" for n in nodes) or "some connections"
         return f"Remembered: {names}."
 
-    async def collect(self, text: str) -> list[TurnEvent]:
+    async def collect(self, text: str, turn_id: str | None = None) -> list[TurnEvent]:
         """Non-streaming helper used by the REST endpoint and tests."""
-        return [ev async for ev in self.handle_turn(text)]
+        return [ev async for ev in self.handle_turn(text, turn_id)]

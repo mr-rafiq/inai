@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import Orb from "./components/Orb/Orb";
-import Chat from "./components/Chat/Chat";
+import Chat, { type ChatFocus } from "./components/Chat/Chat";
 import MemoryView from "./components/Memory/MemoryView";
 import Onboarding from "./components/Onboarding/Onboarding";
 import SettingsModal from "./components/Settings/SettingsModal";
@@ -17,6 +17,7 @@ export default function App() {
   const [dark, setDark] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [brainOpen, setBrainOpen] = useState(true);
+  const [chatFocus, setChatFocus] = useState<ChatFocus | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -118,6 +119,7 @@ export default function App() {
                   connected={connected}
                   onSend={send}
                   userName={profile?.name}
+                  focus={chatFocus}
                 />
               </div>
             </div>
@@ -133,7 +135,17 @@ export default function App() {
                 transition={{ type: "spring", stiffness: 260, damping: 30 }}
                 className="absolute right-4 top-16 bottom-5 z-20 hidden w-80 rounded-3xl border border-white/[0.06] bg-ink-950/60 p-5 shadow-[0_8px_40px_rgba(0,0,0,0.5)] backdrop-blur-xl md:block"
               >
-                <MemoryView version={graphVersion} connected={connected} />
+                <MemoryView
+                  version={graphVersion}
+                  connected={connected}
+                  onNodeClick={(node) =>
+                    setChatFocus({
+                      turnId: node.props?.source_turn as string | undefined,
+                      text: node.props?.source_text as string | undefined,
+                      nonce: Date.now(),
+                    })
+                  }
+                />
               </motion.aside>
             )}
           </AnimatePresence>

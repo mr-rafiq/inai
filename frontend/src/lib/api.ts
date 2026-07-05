@@ -26,6 +26,18 @@ export function wsUrl(): string {
   return `${proto}://${location.host}/ws`;
 }
 
+export interface HistoryTurn {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+}
+
+export async function getHistory(): Promise<HistoryTurn[]> {
+  const r = await fetch(`${base}/api/history`);
+  if (!r.ok) throw new Error(`history ${r.status}`);
+  return (await r.json()).history;
+}
+
 // ---- profile / onboarding --------------------------------------------------
 
 export interface Profile {

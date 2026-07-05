@@ -94,20 +94,31 @@ def _resolve(store: GraphStore, name: str, default_type: str) -> Node:
     return node
 
 
-def ingest(text: str, store: GraphStore, llm: LLMClient) -> dict[str, Any]:
+def ingest(
+    text: str,
+    store: GraphStore,
+    llm: LLMClient,
+    source_turn: str | None = None,
+) -> dict[str, Any]:
     """Extract from ``text`` and write nodes/edges into ``store``.
 
+    ``source_turn`` stamps provenance on everything written, so the UI can
+    navigate from a memory back to the exact chat message that created it.
     Returns a summary of what was written (for logging + the UI).
     """
     store.ensure_self()
     data = extract(text, llm)
+
+    provenance = {"source_text": text[:300]}
+    if source_turn:
+        provenance["source_turn"] = source_turn
 
     # name -> declared type, so relationship endpoints get the right type
     type_of: dict[str, str] = {e["name"].lower(): e["type"] for e in data["entities"]}
 
     created_nodes: list[Node] = []
     for e in data["entities"]:
-        node, created = store.upsert_node(Node(name=e["name"], type=e["type"]))
+        node, created = store.upsert_node(Node(name=e["name"], type=e["type"], props=dict(provenance)))
         if created:
             created_nodes.append(node)
             log.info("WRITE node %s (%s)", node.name, node.type)
@@ -116,7 +127,9 @@ def ingest(text: str, store: GraphStore, llm: LLMClient) -> dict[str, Any]:
     for r in data["relationships"]:
         src = _resolve(store, r["source"], type_of.get(r["source"].lower(), "Note"))
         tgt = _resolve(store, r["target"], type_of.get(r["target"].lower(), "Note"))
-        edge = store.add_edge(Edge(source=src.id, target=tgt.id, type=validate_edge_type(r["type"])))
+        edge = store.add_edge(
+            Edge(source=src.id, target=tgt.id, type=validate_edge_type(r["type"]), props=dict(provenance))
+        )
         created_edges.append(edge)
         log.info("WRITE edge (%s)-[%s]->(%s)", src.name, edge.type, tgt.name)
 

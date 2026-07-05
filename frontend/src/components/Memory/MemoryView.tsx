@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import type { Graph } from "../../lib/types";
+import type { Graph, GraphNode } from "../../lib/types";
 import { getGraph, deleteNode } from "../../lib/api";
+import GraphView from "./GraphView";
 
 interface MemoryViewProps {
   version: number;      // bump to refetch
   connected: boolean;   // refetch when the backend (re)connects
+  onNodeClick?: (node: GraphNode) => void;
 }
 
 const TYPE_STYLE: Record<string, string> = {
@@ -17,9 +19,10 @@ const TYPE_STYLE: Record<string, string> = {
   FinanceItem: "bg-lime-400/10 text-lime-300",
 };
 
-export default function MemoryView({ version, connected }: MemoryViewProps) {
+export default function MemoryView({ version, connected, onNodeClick }: MemoryViewProps) {
   const [graph, setGraph] = useState<Graph>({ nodes: [], edges: [] });
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"graph" | "list">("graph");
   const retries = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -59,9 +62,27 @@ export default function MemoryView({ version, connected }: MemoryViewProps) {
         <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
           Your brain
         </h2>
-        <span className="rounded-full bg-white/5 px-2.5 py-0.5 text-xs text-slate-400">
-          {visible.length} {visible.length === 1 ? "memory" : "memories"}
-        </span>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-full border border-white/10 p-0.5 text-[10px]">
+            <button
+              onClick={() => setMode("graph")}
+              aria-pressed={mode === "graph"}
+              className={`rounded-full px-2.5 py-1 transition ${mode === "graph" ? "bg-accent/25 text-white" : "text-slate-400 hover:text-white"}`}
+            >
+              Graph
+            </button>
+            <button
+              onClick={() => setMode("list")}
+              aria-pressed={mode === "list"}
+              className={`rounded-full px-2.5 py-1 transition ${mode === "list" ? "bg-accent/25 text-white" : "text-slate-400 hover:text-white"}`}
+            >
+              List
+            </button>
+          </div>
+          <span className="rounded-full bg-white/5 px-2.5 py-0.5 text-xs text-slate-400">
+            {visible.length}
+          </span>
+        </div>
       </div>
 
       {error && (
@@ -70,12 +91,24 @@ export default function MemoryView({ version, connected }: MemoryViewProps) {
         </p>
       )}
 
-      {visible.length === 0 && !error && (
+      {mode === "graph" && !error && (
+        <>
+          <GraphView graph={graph} onNodeClick={onNodeClick} />
+          {visible.length > 0 && (
+            <p className="mt-2 text-center text-[10px] text-slate-500">
+              drag to move · wheel to zoom · click a node to jump to its chat
+            </p>
+          )}
+        </>
+      )}
+
+      {mode === "list" && visible.length === 0 && !error && (
         <p className="mt-8 text-center text-xs leading-relaxed text-slate-500">
           Nothing here yet.<br />Tell Inai about your world and watch it grow.
         </p>
       )}
 
+      {mode === "list" && (
       <ul className="space-y-2">
         {visible.map((n) => (
           <li
@@ -101,8 +134,9 @@ export default function MemoryView({ version, connected }: MemoryViewProps) {
           </li>
         ))}
       </ul>
+      )}
 
-      {graph.edges.length > 0 && (
+      {mode === "list" && graph.edges.length > 0 && (
         <div className="mt-6">
           <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
             Connections

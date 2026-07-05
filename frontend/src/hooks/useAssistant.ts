@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage, OrbState, TurnEvent } from "../lib/types";
-import { wsUrl } from "../lib/api";
+import { getHistory, wsUrl } from "../lib/api";
 
 let uid = 0;
 const nextId = () => `m${++uid}`;
@@ -37,6 +37,15 @@ export function useAssistant() {
 
   const handleEvent = useCallback((ev: TurnEvent) => {
     if (ev.kind === "ack") {
+      // Adopt the server-assigned turn id onto the just-sent user message, so
+      // memory provenance (source_turn) can be matched back to it later.
+      const turnId = ev.data.turn_id as string | undefined;
+      if (turnId) {
+        setMessages((m) => {
+          const lastUser = [...m].reverse().find((x) => x.role === "user");
+          return lastUser ? m.map((x) => (x === lastUser ? { ...x, id: turnId } : x)) : m;
+        });
+      }
       const id = nextId();
       pendingId.current = id;
       setMessages((m) => [
@@ -71,6 +80,19 @@ export function useAssistant() {
     setMessages((m) => [...m, { id: nextId(), role: "user", text: clean }]);
     setOrb("thinking");
     sockRef.current?.send(JSON.stringify({ message: clean }));
+  }, []);
+
+  // Load persisted conversation history once (F19) — ids are server turn ids,
+  // which memory provenance points at.
+  const historyLoaded = useRef(false);
+  useEffect(() => {
+    if (historyLoaded.current) return;
+    historyLoaded.current = true;
+    getHistory()
+      .then((turns) =>
+        setMessages((m) => (m.length ? m : turns.map((t) => ({ id: t.id, role: t.role, text: t.content })))),
+      )
+      .catch(() => {});
   }, []);
 
   useEffect(() => {

@@ -1,5 +1,8 @@
 """FastAPI app (F2, F15, F16, F19) — Inai backend.
 
+History is persisted to <data_dir>/history.json so conversations survive
+restarts and memory nodes can link back to their source message.
+
 Endpoints:
   GET  /health                 health check
   GET  /api/config             public (secret-free) config + provider status
@@ -11,7 +14,9 @@ Endpoints:
 """
 from __future__ import annotations
 
+import json
 import logging
+import uuid
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -53,6 +58,25 @@ class ProfileIn(BaseModel):
     about: str = ""
 
 
+class HistoryStore:
+    """Append-only conversation history persisted as JSON (F19)."""
+
+    def __init__(self, path):
+        self.path = path
+        self.turns: list[dict[str, Any]] = []
+        if path.is_file():
+            try:
+                self.turns = json.loads(path.read_text())
+            except json.JSONDecodeError:
+                log.warning("history file corrupt, starting fresh")
+
+    def append(self, role: str, content: str, turn_id: str | None = None) -> dict[str, Any]:
+        entry = {"id": turn_id or uuid.uuid4().hex[:12], "role": role, "content": content}
+        self.turns.append(entry)
+        self.path.write_text(json.dumps(self.turns, indent=1))
+        return entry
+
+
 class AppState:
     """Holds long-lived singletons; rebuildable for tests."""
 
@@ -61,7 +85,7 @@ class AppState:
         self.store = store
         self.llm = llm
         self.orchestrator = Orchestrator(store, llm)
-        self.history: list[dict[str, Any]] = []  # F19 (in-memory; persisted with graph dir)
+        self.history = HistoryStore(cfg.resolved_data_dir / "history.json")
 
 
 def _build_llm(cfg: Config) -> LLMClient:
@@ -169,12 +193,12 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None) -> Fa
 
     @app.post("/api/chat")
     async def chat(body: ChatIn) -> dict[str, Any]:
-        events = await state.orchestrator.collect(body.message)
+        user_turn = state.history.append("user", body.message)
+        events = await state.orchestrator.collect(body.message, turn_id=user_turn["id"])
         result = next((e for e in reversed(events) if e.kind in ("result", "error")), None)
-        state.history.append({"role": "user", "content": body.message})
         if result:
-            state.history.append({"role": "assistant", "content": result.text})
-        return {"events": [e.to_dict() for e in events]}
+            state.history.append("assistant", result.text)
+        return {"events": [e.to_dict() for e in events], "turn_id": user_turn["id"]}
 
     @app.get("/api/graph")
     def graph() -> dict[str, Any]:
@@ -195,7 +219,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None) -> Fa
 
     @app.get("/api/history")
     def history() -> dict[str, Any]:
-        return {"history": state.history}
+        return {"history": state.history.turns}
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket) -> None:
@@ -206,14 +230,15 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None) -> Fa
                 text = (msg or {}).get("message", "")
                 if not text:
                     continue
-                state.history.append({"role": "user", "content": text})
+                user_turn = state.history.append("user", text)
                 final = ""
-                async for ev in state.orchestrator.handle_turn(text):
+                async for ev in state.orchestrator.handle_turn(text, turn_id=user_turn["id"]):
+                    ev.data["turn_id"] = user_turn["id"]
                     await sock.send_json(ev.to_dict())
                     if ev.kind in ("result", "error"):
                         final = ev.text
                 if final:
-                    state.history.append({"role": "assistant", "content": final})
+                    state.history.append("assistant", final)
         except WebSocketDisconnect:
             log.info("ws client disconnected")
 
