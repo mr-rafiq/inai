@@ -136,10 +136,48 @@ export default function GraphView({
 
   const onPointerUp = () => (dragging.current = {});
 
-  const onWheel = (e: React.WheelEvent) => {
-    const k = Math.max(0.4, Math.min(2.5, view.k * (e.deltaY < 0 ? 1.1 : 0.9)));
-    setView((v) => ({ ...v, k }));
+  const clampK = (k: number) => Math.max(0.25, Math.min(4, k));
+
+  /** Zoom anchored at a screen point, so the spot under the cursor stays put. */
+  const zoomAt = (factor: number, cx?: number, cy?: number) => {
+    setView((v) => {
+      const k = clampK(v.k * factor);
+      const rect = svgRef.current?.getBoundingClientRect();
+      const px = cx !== undefined && rect ? cx - rect.left : W / 2;
+      const py = cy !== undefined && rect ? cy - rect.top : H / 2;
+      return {
+        k,
+        x: px - ((px - v.x) / v.k) * k,
+        y: py - ((py - v.y) / v.k) * k,
+      };
+    });
   };
+
+  const onWheel = (e: React.WheelEvent) => {
+    zoomAt(e.deltaY < 0 ? 1.15 : 0.87, e.clientX, e.clientY);
+  };
+
+  /** Fit the whole graph into view with padding. */
+  const fitAll = () => {
+    if (nodes.length === 0) return;
+    const xs = nodes.map((n) => n.x);
+    const ys = nodes.map((n) => n.y);
+    const minX = Math.min(...xs) - 40;
+    const maxX = Math.max(...xs) + 40;
+    const minY = Math.min(...ys) - 40;
+    const maxY = Math.max(...ys) + 40;
+    const k = clampK(Math.min(W / (maxX - minX), H / (maxY - minY)));
+    setView({
+      k,
+      x: W / 2 - ((minX + maxX) / 2) * k,
+      y: H / 2 - ((minY + maxY) / 2) * k,
+    });
+  };
+
+  // Fit once after each fresh layout so the graph never starts off-screen.
+  useEffect(() => {
+    if (nodes.length) fitAll();
+  }, [layoutKey, nodes.length]);
 
   if (graph.nodes.length === 0) {
     return (
@@ -150,6 +188,32 @@ export default function GraphView({
   }
 
   return (
+    <div className="relative">
+      {/* explorer controls */}
+      <div className="absolute bottom-2 right-2 z-10 flex flex-col gap-1">
+        <button
+          aria-label="Zoom in"
+          onClick={() => zoomAt(1.25)}
+          className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 bg-ink-950/80 text-sm text-slate-300 backdrop-blur transition hover:border-accent/60 hover:text-white"
+        >
+          +
+        </button>
+        <button
+          aria-label="Zoom out"
+          onClick={() => zoomAt(0.8)}
+          className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 bg-ink-950/80 text-sm text-slate-300 backdrop-blur transition hover:border-accent/60 hover:text-white"
+        >
+          −
+        </button>
+        <button
+          aria-label="Fit all"
+          title="Fit whole graph"
+          onClick={fitAll}
+          className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 bg-ink-950/80 text-[11px] text-slate-300 backdrop-blur transition hover:border-accent/60 hover:text-white"
+        >
+          ⤢
+        </button>
+      </div>
     <svg
       ref={svgRef}
       data-testid="memory-graph"
@@ -219,5 +283,6 @@ export default function GraphView({
         })}
       </g>
     </svg>
+    </div>
   );
 }

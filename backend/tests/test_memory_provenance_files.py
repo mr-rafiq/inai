@@ -79,8 +79,8 @@ def test_safe_list_and_read(file_root):
 
 
 def test_path_traversal_is_blocked(file_root):
-    assert "not allowed" in safe_read(file_root / ".." / "escape.txt")
-    assert "not allowed" in safe_list((file_root / "sub" / ".." / "..").resolve())
+    assert "outside the allowed scope" in safe_read(file_root / ".." / "escape.txt")
+    assert "outside the allowed scope" in safe_list((file_root / "sub" / ".." / "..").resolve())
 
 
 def test_resolve_path_defaults_inside_roots(file_root):

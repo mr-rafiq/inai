@@ -85,9 +85,14 @@ class TurnEvent:
 
 
 class Orchestrator:
-    def __init__(self, store: GraphStore, llm: LLMClient):
+    def __init__(self, store: GraphStore, llm: LLMClient, cfg=None):
         self.store = store
         self.llm = llm
+        self.cfg = cfg
+
+    @property
+    def _file_access(self) -> str | None:
+        return getattr(self.cfg, "file_access", None)
 
     async def handle_turn(self, text: str, turn_id: str | None = None) -> AsyncIterator[TurnEvent]:
         """Yield the two-tier response for one user message."""
@@ -130,8 +135,8 @@ class Orchestrator:
                 })
 
             elif intent is Intent.FILE_QUERY:
-                findings = handle_file_query(text)
-                view = file_view_spec(text)  # rich file list / content view (F27)
+                findings = handle_file_query(text, self._file_access)
+                view = file_view_spec(text, self._file_access)  # rich file list / content view (F27)
                 reply = self.llm.complete([
                     {
                         "role": "system",

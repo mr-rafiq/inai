@@ -52,6 +52,7 @@ export default function SettingsModal({ onClose, dark, onToggleTheme }: Settings
         model: cfg.model,
         api_base: cfg.api_base,
         temperature: Number(cfg.temperature),
+        file_access: cfg.file_access,
       });
       setCfg(next);
       setSaved(true);
@@ -168,6 +169,33 @@ export default function SettingsModal({ onClose, dark, onToggleTheme }: Settings
                 onChange={(e) => patch({ temperature: Number(e.target.value) })}
                 className="w-full accent-[#7c9cff]"
               />
+            </div>
+
+            <div className="rounded-xl border border-white/10 px-4 py-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm">File access</span>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    What Inai may read on this machine. Read-only — revoke anytime.
+                  </p>
+                </div>
+                <select
+                  aria-label="File access"
+                  value={cfg.file_access}
+                  onChange={(e) => patch({ file_access: e.target.value as AppConfig["file_access"] })}
+                  className="rounded-lg border border-white/10 bg-ink-900/70 px-2.5 py-1.5 text-xs outline-none focus:border-accent/60"
+                >
+                  <option value="off">Off — no access</option>
+                  <option value="home">Home folder</option>
+                  <option value="full">Entire drive</option>
+                </select>
+              </div>
+              {cfg.file_access === "full" && (
+                <p className="mt-2 text-xs text-amber-400">
+                  Entire-drive access lets Inai read any file your user account can.
+                  macOS may still ask separately for protected folders.
+                </p>
+              )}
             </div>
 
             <div className="flex items-center justify-between rounded-xl border border-white/10 px-4 py-3">

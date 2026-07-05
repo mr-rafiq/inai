@@ -45,10 +45,31 @@ export interface HistoryTurn {
   view?: import("./types").ViewSpec | null;
 }
 
-export async function getHistory(): Promise<HistoryTurn[]> {
-  const r = await fetch(`${base}/api/history`);
+export async function getHistory(sessionId?: string): Promise<HistoryTurn[]> {
+  const qs = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
+  const r = await fetch(`${base}/api/history${qs}`);
   if (!r.ok) throw new Error(`history ${r.status}`);
   return (await r.json()).history;
+}
+
+// ---- chat sessions (one shared brain) ---------------------------------------
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  count: number;
+}
+
+export async function getSessions(): Promise<ChatSession[]> {
+  const r = await fetch(`${base}/api/sessions`);
+  if (!r.ok) throw new Error(`sessions ${r.status}`);
+  return (await r.json()).sessions;
+}
+
+export async function createSession(): Promise<ChatSession> {
+  const r = await fetch(`${base}/api/sessions`, { method: "POST" });
+  if (!r.ok) throw new Error(`sessions ${r.status}`);
+  return r.json();
 }
 
 // ---- profile / onboarding --------------------------------------------------
@@ -83,6 +104,7 @@ export interface AppConfig {
   fast_model: string;
   api_base: string;
   temperature: number;
+  file_access: "off" | "home" | "full";
   is_cloud: boolean;
   has_api_key: boolean;
 }

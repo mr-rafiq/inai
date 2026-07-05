@@ -36,6 +36,7 @@ log = logging.getLogger("inai")
 
 class ChatIn(BaseModel):
     message: str
+    session_id: str | None = None
 
 
 class NodePatch(BaseModel):
@@ -59,25 +60,79 @@ class ProfileIn(BaseModel):
 
 
 class HistoryStore:
-    """Append-only conversation history persisted as JSON (F19)."""
+    """Session-based conversation history persisted as JSON (F19).
+
+    Multiple chat sessions share the ONE memory graph — sessions organize
+    conversations, the brain stays global.
+    """
 
     def __init__(self, path):
         self.path = path
-        self.turns: list[dict[str, Any]] = []
+        self.data: dict[str, Any] = {"sessions": [], "turns": {}}
         if path.is_file():
             try:
-                self.turns = json.loads(path.read_text())
+                loaded = json.loads(path.read_text())
+                if isinstance(loaded, list):  # migrate pre-sessions format
+                    sid = uuid.uuid4().hex[:12]
+                    self.data = {
+                        "sessions": [{"id": sid, "title": "Chat 1"}],
+                        "turns": {sid: loaded},
+                    }
+                else:
+                    self.data = loaded
             except json.JSONDecodeError:
                 log.warning("history file corrupt, starting fresh")
+        # also migrate a legacy history.json sitting next to the new file
+        legacy = path.parent / "history.json"
+        if not self.data["sessions"] and legacy.is_file() and legacy != path:
+            try:
+                old = json.loads(legacy.read_text())
+                if isinstance(old, list) and old:
+                    sid = uuid.uuid4().hex[:12]
+                    self.data = {"sessions": [{"id": sid, "title": "Chat 1"}], "turns": {sid: old}}
+            except json.JSONDecodeError:
+                pass
+        if not self.data["sessions"]:
+            self.create("New chat")
+
+    def _flush(self) -> None:
+        self.path.write_text(json.dumps(self.data, indent=1))
+
+    def sessions(self) -> list[dict[str, Any]]:
+        return [
+            {**s, "count": len(self.data["turns"].get(s["id"], []))}
+            for s in self.data["sessions"]
+        ]
+
+    def create(self, title: str = "New chat") -> dict[str, Any]:
+        session = {"id": uuid.uuid4().hex[:12], "title": title}
+        self.data["sessions"].append(session)
+        self.data["turns"][session["id"]] = []
+        self._flush()
+        return session
+
+    def latest_session_id(self) -> str:
+        return self.data["sessions"][-1]["id"]
+
+    def turns(self, session_id: str | None = None) -> list[dict[str, Any]]:
+        sid = session_id or self.latest_session_id()
+        return self.data["turns"].get(sid, [])
 
     def append(
-        self, role: str, content: str, turn_id: str | None = None, view: dict | None = None
+        self, role: str, content: str,
+        session_id: str | None = None, turn_id: str | None = None, view: dict | None = None,
     ) -> dict[str, Any]:
+        sid = session_id or self.latest_session_id()
         entry: dict[str, Any] = {"id": turn_id or uuid.uuid4().hex[:12], "role": role, "content": content}
         if view:
             entry["view"] = view  # rich views survive reloads
-        self.turns.append(entry)
-        self.path.write_text(json.dumps(self.turns, indent=1))
+        turns = self.data["turns"].setdefault(sid, [])
+        turns.append(entry)
+        # first user message names the session
+        session = next((s for s in self.data["sessions"] if s["id"] == sid), None)
+        if session and session["title"] in ("New chat", "") and role == "user":
+            session["title"] = content[:40] + ("…" if len(content) > 40 else "")
+        self._flush()
         return entry
 
 
@@ -88,8 +143,8 @@ class AppState:
         self.cfg = cfg
         self.store = store
         self.llm = llm
-        self.orchestrator = Orchestrator(store, llm)
-        self.history = HistoryStore(cfg.resolved_data_dir / "history.json")
+        self.orchestrator = Orchestrator(store, llm, cfg)
+        self.history = HistoryStore(cfg.resolved_data_dir / "sessions.json")
 
 
 def _build_llm(cfg: Config) -> LLMClient:
@@ -143,7 +198,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None) -> Fa
         if changes:
             save_config(state.cfg)
             state.llm = _build_llm(state.cfg)
-            state.orchestrator = Orchestrator(state.store, state.llm)
+            state.orchestrator = Orchestrator(state.store, state.llm, state.cfg)
             log.info("config updated: %s -> llm=%s", changes, state.llm.name)
         return state.cfg.to_public_dict()
 
@@ -197,12 +252,22 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None) -> Fa
 
     @app.post("/api/chat")
     async def chat(body: ChatIn) -> dict[str, Any]:
-        user_turn = state.history.append("user", body.message)
+        user_turn = state.history.append("user", body.message, session_id=body.session_id)
         events = await state.orchestrator.collect(body.message, turn_id=user_turn["id"])
         result = next((e for e in reversed(events) if e.kind in ("result", "error")), None)
         if result:
-            state.history.append("assistant", result.text, view=result.data.get("view"))
+            state.history.append(
+                "assistant", result.text, session_id=body.session_id, view=result.data.get("view")
+            )
         return {"events": [e.to_dict() for e in events], "turn_id": user_turn["id"]}
+
+    @app.get("/api/sessions")
+    def sessions() -> dict[str, Any]:
+        return {"sessions": state.history.sessions()}
+
+    @app.post("/api/sessions")
+    def new_session() -> dict[str, Any]:
+        return state.history.create()
 
     @app.get("/api/graph")
     def graph() -> dict[str, Any]:
@@ -222,8 +287,8 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None) -> Fa
         return {"deleted": node_id}
 
     @app.get("/api/history")
-    def history() -> dict[str, Any]:
-        return {"history": state.history.turns}
+    def history(session_id: str | None = None) -> dict[str, Any]:
+        return {"history": state.history.turns(session_id)}
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket) -> None:
@@ -232,9 +297,10 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None) -> Fa
             while True:
                 msg = await sock.receive_json()
                 text = (msg or {}).get("message", "")
+                session_id = (msg or {}).get("session_id")
                 if not text:
                     continue
-                user_turn = state.history.append("user", text)
+                user_turn = state.history.append("user", text, session_id=session_id)
                 final = ""
                 final_view: dict | None = None
                 async for ev in state.orchestrator.handle_turn(text, turn_id=user_turn["id"]):
@@ -244,7 +310,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None) -> Fa
                         final = ev.text
                         final_view = ev.data.get("view")
                 if final:
-                    state.history.append("assistant", final, view=final_view)
+                    state.history.append("assistant", final, session_id=session_id, view=final_view)
         except WebSocketDisconnect:
             log.info("ws client disconnected")
 

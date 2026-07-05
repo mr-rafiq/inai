@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage, OrbState, TurnEvent } from "../lib/types";
-import { getHistory, wsUrl } from "../lib/api";
+import {
+  createSession, getHistory, getSessions, wsUrl, type ChatSession,
+} from "../lib/api";
 
 let uid = 0;
 const nextId = () => `m${++uid}`;
@@ -17,6 +19,9 @@ export function useAssistant() {
   const [orb, setOrb] = useState<OrbState>("idle");
   const [connected, setConnected] = useState(false);
   const [graphVersion, setGraphVersion] = useState(0); // bump to refetch memory
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const sessionRef = useRef<string | null>(null);
   const sockRef = useRef<WebSocket | null>(null);
   const pendingId = useRef<string | null>(null);
   const speakTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -80,22 +85,48 @@ export function useAssistant() {
     if (!clean) return;
     setMessages((m) => [...m, { id: nextId(), role: "user", text: clean }]);
     setOrb("thinking");
-    sockRef.current?.send(JSON.stringify({ message: clean }));
+    sockRef.current?.send(JSON.stringify({ message: clean, session_id: sessionRef.current }));
+    // titles update after the first message of a session
+    setTimeout(() => getSessions().then(setSessions).catch(() => {}), 800);
   }, []);
 
-  // Load persisted conversation history once (F19) — ids are server turn ids,
-  // which memory provenance points at.
+  // Load sessions + the latest session's history once (F19). Session ids are
+  // server-side; memory provenance points at turn ids inside them.
   const historyLoaded = useRef(false);
   useEffect(() => {
     if (historyLoaded.current) return;
     historyLoaded.current = true;
-    getHistory()
-      .then((turns) =>
-        setMessages((m) =>
-          m.length ? m : turns.map((t) => ({ id: t.id, role: t.role, text: t.content, view: t.view ?? null })),
-        ),
-      )
+    getSessions()
+      .then((ss) => {
+        setSessions(ss);
+        const active = ss[ss.length - 1];
+        if (!active) return;
+        sessionRef.current = active.id;
+        setSessionId(active.id);
+        return getHistory(active.id).then((turns) =>
+          setMessages((m) =>
+            m.length ? m : turns.map((t) => ({ id: t.id, role: t.role, text: t.content, view: t.view ?? null })),
+          ),
+        );
+      })
       .catch(() => {});
+  }, []);
+
+  /** Switch to another chat session (same brain, different conversation). */
+  const switchSession = useCallback(async (id: string) => {
+    sessionRef.current = id;
+    setSessionId(id);
+    const turns = await getHistory(id).catch(() => []);
+    setMessages(turns.map((t) => ({ id: t.id, role: t.role, text: t.content, view: t.view ?? null })));
+  }, []);
+
+  /** Start a fresh conversation — the memory graph carries over untouched. */
+  const newSession = useCallback(async () => {
+    const s = await createSession();
+    setSessions((ss) => [...ss, { ...s, count: 0 }]);
+    sessionRef.current = s.id;
+    setSessionId(s.id);
+    setMessages([]);
   }, []);
 
   useEffect(() => {
@@ -110,5 +141,8 @@ export function useAssistant() {
   // turn — let them request a memory-panel refresh.
   const refreshGraph = useCallback(() => setGraphVersion((v) => v + 1), []);
 
-  return { messages, orb, connected, graphVersion, send, refreshGraph };
+  return {
+    messages, orb, connected, graphVersion, send, refreshGraph,
+    sessions, sessionId, switchSession, newSession,
+  };
 }

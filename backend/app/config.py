@@ -36,6 +36,7 @@ _DEFAULTS: dict[str, Any] = {
     "request_timeout": 60,         # seconds; never hang the UI
     # Storage
     "graph_backend": "kuzu",       # kuzu | json  (json is the zero-dep fallback)
+    "file_access": "home",         # off | home | full — user-revocable permission
     "data_dir": "",                # "" -> <repo>/data
     # Server
     "host": "127.0.0.1",
@@ -83,6 +84,7 @@ class Config:
     temperature: float = _DEFAULTS["temperature"]
     request_timeout: int = _DEFAULTS["request_timeout"]
     graph_backend: str = _DEFAULTS["graph_backend"]
+    file_access: str = _DEFAULTS["file_access"]
     data_dir: str = _DEFAULTS["data_dir"]
     host: str = _DEFAULTS["host"]
     port: int = _DEFAULTS["port"]
@@ -121,7 +123,10 @@ class Config:
 
 # Fields the user may change at runtime from the UI (F3/F5). Server/storage
 # fields stay file-managed to avoid footguns.
-UPDATABLE_FIELDS = {"provider", "model", "fast_model", "api_base", "temperature", "request_timeout"}
+UPDATABLE_FIELDS = {
+    "provider", "model", "fast_model", "api_base", "temperature", "request_timeout",
+    "file_access",
+}
 
 
 def save_config(cfg: Config) -> Path:

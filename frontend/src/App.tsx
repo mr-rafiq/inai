@@ -10,7 +10,11 @@ import { getHealth, getProfile, type Profile } from "./lib/api";
 import type { HealthInfo } from "./lib/types";
 
 export default function App() {
-  const { messages, orb, connected, graphVersion, send, refreshGraph } = useAssistant();
+  const {
+    messages, orb, connected, graphVersion, send, refreshGraph,
+    sessions, sessionId, switchSession, newSession,
+  } = useAssistant();
+  const [chatExpanded, setChatExpanded] = useState(false);
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
@@ -112,8 +116,40 @@ export default function App() {
           <main className="relative z-10 flex h-[calc(100%-4.5rem)] flex-col">
             <div className="min-h-0 flex-1" /> {/* the orb breathes here */}
 
-            <div className="mx-auto mb-5 flex w-full max-w-2xl px-4" style={{ height: "46%" }}>
+            <div
+              className="mx-auto mb-5 flex w-full max-w-2xl px-4 transition-all duration-500"
+              style={{ height: chatExpanded ? "88%" : "46%" }}
+            >
               <div className="flex w-full flex-col rounded-3xl border border-white/[0.06] bg-ink-950/50 p-4 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                {/* chat toolbar: sessions + expand */}
+                <div className="mb-1 flex items-center gap-2">
+                  <select
+                    aria-label="Chat session"
+                    value={sessionId ?? ""}
+                    onChange={(e) => switchSession(e.target.value)}
+                    className="max-w-[45%] rounded-lg border border-white/10 bg-ink-900/70 px-2 py-1 text-[11px] text-slate-300 outline-none focus:border-accent/60"
+                  >
+                    {sessions.map((s) => (
+                      <option key={s.id} value={s.id}>{s.title}</option>
+                    ))}
+                  </select>
+                  <button
+                    aria-label="New chat"
+                    onClick={newSession}
+                    title="New chat — your brain carries over"
+                    className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-slate-300 transition hover:border-accent/60 hover:text-white"
+                  >
+                    + New
+                  </button>
+                  <button
+                    aria-label={chatExpanded ? "Collapse chat" : "Expand chat"}
+                    onClick={() => setChatExpanded((x) => !x)}
+                    title={chatExpanded ? "Collapse chat" : "Expand chat"}
+                    className="ml-auto rounded-lg border border-white/10 px-2 py-1 text-[11px] text-slate-300 transition hover:border-accent/60 hover:text-white"
+                  >
+                    {chatExpanded ? "⌄ Collapse" : "⌃ Expand"}
+                  </button>
+                </div>
                 <Chat
                   messages={messages}
                   connected={connected}
