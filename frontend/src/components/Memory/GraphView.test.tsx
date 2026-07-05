@@ -39,4 +39,19 @@ describe("GraphView", () => {
     render(<GraphView graph={{ nodes: [], edges: [] }} />);
     expect(screen.getByText(/Nothing here yet/)).toBeInTheDocument();
   });
+
+  it("dims non-matching nodes when searching", () => {
+    render(<GraphView graph={graph} search="span" />);
+    const spanish = screen.getByLabelText("Memory: Spanish").closest("g");
+    const user = screen.getByLabelText("Memory: User").closest("g");
+    expect(spanish).toHaveAttribute("opacity", "1");
+    expect(user).toHaveAttribute("opacity", "0.18");
+  });
+
+  it("filters by category", () => {
+    render(<GraphView graph={graph} typeFilter="Person" />);
+    // Skill node dimmed; root (Person, but root always visible) full opacity
+    expect(screen.getByLabelText("Memory: Spanish").closest("g")).toHaveAttribute("opacity", "0.18");
+    expect(screen.getByLabelText("Memory: User").closest("g")).toHaveAttribute("opacity", "1");
+  });
 });

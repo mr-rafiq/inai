@@ -13,12 +13,26 @@ export interface TurnEvent {
   };
 }
 
+// Structured views the assistant can render in chat (generative UI, F27/F29).
+export interface FileEntry {
+  name: string;
+  kind: "dir" | "file";
+  size: number | null;
+  suffix: string;
+}
+
+export type ViewSpec =
+  | { type: "file_list"; path: string; entries: FileEntry[]; total: number }
+  | { type: "file_content"; path: string; content: string; truncated?: boolean }
+  | { type: "task_list"; tasks: GraphNode[] };
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
   pending?: boolean; // true while this is a light ack awaiting depth
   intent?: string;
+  view?: ViewSpec | null;
 }
 
 export interface GraphNode {

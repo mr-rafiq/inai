@@ -121,3 +121,53 @@ def handle_file_query(text: str) -> str:
     if target.is_file() or wants_read and target.exists() and target.is_file():
         return safe_read(target)
     return safe_list(target)
+
+
+# ---- structured view specs (generative UI, F27/F29) --------------------------
+
+def list_dir_structured(path: Path) -> dict | None:
+    """Directory listing as data, for the frontend's rich file view."""
+    if not _inside_roots(path) or not path.exists() or not path.is_dir():
+        return None
+    entries = []
+    for p in sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower())):
+        if p.name.startswith("."):
+            continue
+        entries.append({
+            "name": p.name,
+            "kind": "dir" if p.is_dir() else "file",
+            "size": None if p.is_dir() else p.stat().st_size,
+            "suffix": p.suffix.lower(),
+        })
+    return {
+        "type": "file_list",
+        "path": str(path),
+        "entries": entries[:MAX_LIST_ENTRIES],
+        "total": len(entries),
+    }
+
+
+def read_file_structured(path: Path) -> dict | None:
+    """File contents as data, for the frontend's code/text view."""
+    if not _inside_roots(path) or not path.is_file():
+        return None
+    size = path.stat().st_size
+    if path.suffix.lower() not in _TEXT_SUFFIXES:
+        return None  # binary — the text answer explains it
+    data = path.read_bytes()[:MAX_READ_BYTES]
+    return {
+        "type": "file_content",
+        "path": str(path),
+        "content": data.decode("utf-8", errors="replace"),
+        "truncated": size > MAX_READ_BYTES,
+    }
+
+
+def file_view_spec(text: str) -> dict | None:
+    """Best structured view for a file query, or None (text answer only)."""
+    target = resolve_path(text)
+    if target.is_dir():
+        return list_dir_structured(target)
+    if target.is_file():
+        return read_file_structured(target)
+    return None

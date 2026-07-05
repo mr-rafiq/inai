@@ -24,6 +24,12 @@ interface SimNode extends SimulationNodeDatum {
 interface GraphViewProps {
   graph: Graph;
   onNodeClick?: (node: GraphNode) => void;
+  /** highlight + focus nodes whose name matches */
+  search?: string;
+  /** show only this node type (root stays visible) */
+  typeFilter?: string | null;
+  width?: number;
+  height?: number;
 }
 
 const TYPE_COLOR: Record<string, string> = {
@@ -38,15 +44,32 @@ const TYPE_COLOR: Record<string, string> = {
   Preference: "#c084fc",
 };
 
-export default function GraphView({ graph, onNodeClick }: GraphViewProps) {
+export default function GraphView({
+  graph, onNodeClick, search = "", typeFilter = null, width, height,
+}: GraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [nodes, setNodes] = useState<SimNode[]>([]);
   const [links, setLinks] = useState<{ source: SimNode; target: SimNode; type: string }[]>([]);
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
   const dragging = useRef<{ node?: SimNode; panStart?: { x: number; y: number; vx: number; vy: number } }>({});
 
-  const W = 320;
-  const H = 460;
+  const W = width ?? 320;
+  const H = height ?? 460;
+
+  const q = search.trim().toLowerCase();
+  const matches = (n: SimNode) => Boolean(q) && n.name.toLowerCase().includes(q);
+  const isVisible = (n: SimNode) =>
+    (Boolean(n.props?.root) || !typeFilter || n.type === typeFilter) && (!q || matches(n));
+  const isDimmed = (n: SimNode) => (q || typeFilter) && !isVisible(n) && !matches(n);
+
+  // Pan the camera to the first search match so the user can "search to focus".
+  useEffect(() => {
+    if (!q) return;
+    const hit = nodes.find(matches);
+    if (hit) {
+      setView((v) => ({ ...v, x: W / 2 - hit.x * v.k, y: H / 2 - hit.y * v.k }));
+    }
+  }, [q, nodes.length]);
 
   // Deterministic layout: run the simulation to rest synchronously (graphs are
   // small), so there's no RAF loop to manage and jsdom tests stay simple.
@@ -141,40 +164,46 @@ export default function GraphView({ graph, onNodeClick }: GraphViewProps) {
     >
       <g transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
         {/* edges */}
-        {links.map((l, i) => (
-          <g key={i}>
-            <line
-              x1={l.source.x} y1={l.source.y} x2={l.target.x} y2={l.target.y}
-              stroke="rgba(124,156,255,0.25)" strokeWidth={1.2}
-            />
-            <text
-              x={(l.source.x + l.target.x) / 2}
-              y={(l.source.y + l.target.y) / 2 - 4}
-              textAnchor="middle"
-              className="pointer-events-none"
-              fontSize={7}
-              fill="rgba(148,163,184,0.55)"
-            >
-              {l.type.toLowerCase().replace("_", " ")}
-            </text>
-          </g>
-        ))}
+        {links.map((l, i) => {
+          const dim = isDimmed(l.source) || isDimmed(l.target);
+          return (
+            <g key={i} opacity={dim ? 0.12 : 1}>
+              <line
+                x1={l.source.x} y1={l.source.y} x2={l.target.x} y2={l.target.y}
+                stroke="rgba(124,156,255,0.25)" strokeWidth={1.2}
+              />
+              <text
+                x={(l.source.x + l.target.x) / 2}
+                y={(l.source.y + l.target.y) / 2 - 4}
+                textAnchor="middle"
+                className="pointer-events-none"
+                fontSize={7}
+                fill="rgba(148,163,184,0.55)"
+              >
+                {l.type.toLowerCase().replace("_", " ")}
+              </text>
+            </g>
+          );
+        })}
         {/* nodes */}
         {nodes.map((n) => {
           const isRoot = Boolean(n.props?.root);
           const color = isRoot ? "#dbe4ff" : TYPE_COLOR[n.type] ?? "#94a3b8";
           const r = isRoot ? 14 : 10;
+          const hit = matches(n);
           return (
             <g
               key={n.id}
               data-node-name={n.name}
               transform={`translate(${n.x},${n.y})`}
               className="cursor-pointer"
+              opacity={isDimmed(n) ? 0.18 : 1}
               onClick={() => !isRoot && onNodeClick?.(n)}
               role="button"
               aria-label={`Memory: ${n.name}`}
             >
-              <circle r={r + 6} fill={color} opacity={0.12} />
+              {hit && <circle r={r + 9} fill="none" stroke={color} strokeWidth={1.5} opacity={0.8} />}
+              <circle r={r + 6} fill={color} opacity={hit ? 0.25 : 0.12} />
               <circle r={r} fill={color} opacity={0.9} stroke="rgba(255,255,255,0.35)" strokeWidth={1} />
               <text
                 y={r + 12}

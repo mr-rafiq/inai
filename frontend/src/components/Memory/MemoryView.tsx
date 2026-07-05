@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Graph, GraphNode } from "../../lib/types";
 import { getGraph, deleteNode } from "../../lib/api";
 import GraphView from "./GraphView";
@@ -23,6 +24,9 @@ export default function MemoryView({ version, connected, onNodeClick }: MemoryVi
   const [graph, setGraph] = useState<Graph>({ nodes: [], edges: [] });
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"graph" | "list">("graph");
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const retries = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -55,6 +59,12 @@ export default function MemoryView({ version, connected, onNodeClick }: MemoryVi
 
   const nameOf = (id: string) => graph.nodes.find((n) => n.id === id)?.name ?? "?";
   const visible = graph.nodes.filter((n) => !n.props?.root);
+  const categories = [...new Set(visible.map((n) => n.type))].sort();
+  const listVisible = visible.filter(
+    (n) =>
+      (!typeFilter || n.type === typeFilter) &&
+      (!search || n.name.toLowerCase().includes(search.toLowerCase())),
+  );
 
   return (
     <div className="scroll-slim h-full overflow-y-auto pr-1">
@@ -91,15 +101,119 @@ export default function MemoryView({ version, connected, onNodeClick }: MemoryVi
         </p>
       )}
 
+      {/* brain explorer controls: search-to-focus + category filters */}
+      {visible.length > 0 && (
+        <div className="mb-3 space-y-2">
+          <div className="flex gap-2">
+            <input
+              aria-label="Search memories"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search your brain…"
+              className="w-full rounded-lg border border-white/10 bg-ink-900/70 px-3 py-1.5 text-xs outline-none placeholder:text-slate-500 focus:border-accent/60"
+            />
+            {mode === "graph" && (
+              <button
+                aria-label="Expand graph"
+                title="Full-screen graph"
+                onClick={() => setExpanded(true)}
+                className="shrink-0 rounded-lg border border-white/10 px-2.5 text-xs text-slate-300 transition hover:border-accent/60 hover:text-white"
+              >
+                ⛶
+              </button>
+            )}
+          </div>
+          {categories.length > 1 && (
+            <div className="flex flex-wrap gap-1">
+              {categories.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setTypeFilter(typeFilter === c ? null : c)}
+                  aria-pressed={typeFilter === c}
+                  className={`rounded-full px-2 py-0.5 text-[10px] transition ${
+                    typeFilter === c
+                      ? "bg-accent/30 text-white"
+                      : "bg-white/5 text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {mode === "graph" && !error && (
         <>
-          <GraphView graph={graph} onNodeClick={onNodeClick} />
+          <GraphView graph={graph} onNodeClick={onNodeClick} search={search} typeFilter={typeFilter} />
           {visible.length > 0 && (
             <p className="mt-2 text-center text-[10px] text-slate-500">
               drag to move · wheel to zoom · click a node to jump to its chat
             </p>
           )}
         </>
+      )}
+
+      {/* full-screen brain explorer — portaled to <body>: the drawer has a
+          framer-motion transform, which would trap position:fixed inside it */}
+      {expanded && createPortal(
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-6 backdrop-blur-sm"
+          onClick={() => setExpanded(false)}
+          role="dialog"
+          aria-label="Brain explorer"
+        >
+          <div
+            className="flex h-full w-full max-w-6xl flex-col rounded-3xl border border-white/[0.08] bg-ink-950/90 p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center gap-3">
+              <h2 className="text-sm font-semibold tracking-wide">Brain explorer</h2>
+              <input
+                aria-label="Search brain explorer"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search to focus…"
+                className="w-64 rounded-lg border border-white/10 bg-ink-900/70 px-3 py-1.5 text-xs outline-none placeholder:text-slate-500 focus:border-accent/60"
+              />
+              <div className="flex flex-wrap gap-1">
+                {categories.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setTypeFilter(typeFilter === c ? null : c)}
+                    className={`rounded-full px-2.5 py-1 text-[10px] transition ${
+                      typeFilter === c ? "bg-accent/30 text-white" : "bg-white/5 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <button
+                aria-label="Close brain explorer"
+                onClick={() => setExpanded(false)}
+                className="ml-auto rounded-lg px-2 py-1 text-slate-400 transition hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <GraphView
+                graph={graph}
+                onNodeClick={(n) => {
+                  setExpanded(false);
+                  onNodeClick?.(n);
+                }}
+                search={search}
+                typeFilter={typeFilter}
+                width={1100}
+                height={640}
+              />
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
 
       {mode === "list" && visible.length === 0 && !error && (
@@ -110,7 +224,7 @@ export default function MemoryView({ version, connected, onNodeClick }: MemoryVi
 
       {mode === "list" && (
       <ul className="space-y-2">
-        {visible.map((n) => (
+        {listVisible.map((n) => (
           <li
             key={n.id}
             data-node-name={n.name}

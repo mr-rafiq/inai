@@ -10,7 +10,7 @@ import { getHealth, getProfile, type Profile } from "./lib/api";
 import type { HealthInfo } from "./lib/types";
 
 export default function App() {
-  const { messages, orb, connected, graphVersion, send } = useAssistant();
+  const { messages, orb, connected, graphVersion, send, refreshGraph } = useAssistant();
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
@@ -120,6 +120,7 @@ export default function App() {
                   onSend={send}
                   userName={profile?.name}
                   focus={chatFocus}
+                  onViewMutate={refreshGraph}
                 />
               </div>
             </div>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { ChatMessage } from "../../lib/types";
+import ViewRenderer from "../Views/ViewRenderer";
 
 export interface ChatFocus {
   /** server turn id (memory provenance) and/or source text to locate */
@@ -15,9 +16,10 @@ interface ChatProps {
   onSend: (text: string) => void;
   userName?: string;
   focus?: ChatFocus | null;
+  onViewMutate?: () => void; // interactive views changed the graph
 }
 
-export default function Chat({ messages, connected, onSend, userName, focus }: ChatProps) {
+export default function Chat({ messages, connected, onSend, userName, focus, onViewMutate }: ChatProps) {
   const [draft, setDraft] = useState("");
   const [flashId, setFlashId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -85,6 +87,7 @@ export default function Chat({ messages, connected, onSend, userName, focus }: C
                 ].join(" ")}
               >
                 {m.text}
+                {m.view && !m.pending && <ViewRenderer view={m.view} onMutate={onViewMutate} />}
               </div>
             </motion.div>
           ))}

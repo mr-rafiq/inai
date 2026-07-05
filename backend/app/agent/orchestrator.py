@@ -20,7 +20,7 @@ from ..brain.ingest import ingest
 from ..brain.retrieve import answer_question
 from ..brain.store import GraphStore
 from ..llm.client import LLMClient, friendly_llm_error
-from ..tools.files import handle_file_query, is_file_query
+from ..tools.files import handle_file_query, is_file_query, file_view_spec
 
 log = logging.getLogger("inai.agent")
 
@@ -108,6 +108,19 @@ class Orchestrator:
                     "edges_created": result["edges_created"],
                 })
 
+            elif intent is Intent.UI_REQUEST and re.search(r"\btasks?\b|\bto-?dos?\b", text, re.I):
+                # Task view (F29): render the user's tasks as an interactive list.
+                tasks = [n.to_dict() for n in self.store.nodes() if n.type == "Task"]
+                open_n = sum(1 for t in tasks if not t["props"].get("done"))
+                summary = (
+                    f"You have {len(tasks)} task{'s' if len(tasks) != 1 else ''}"
+                    + (f", {open_n} still open." if tasks else " — nothing on your plate.")
+                )
+                yield TurnEvent("result", summary, {
+                    "intent": intent.value,
+                    "view": {"type": "task_list", "tasks": tasks},
+                })
+
             elif intent in (Intent.QUESTION, Intent.UI_REQUEST):
                 res = answer_question(text, self.store, self.llm)
                 yield TurnEvent("result", res["answer"], {
@@ -118,17 +131,24 @@ class Orchestrator:
 
             elif intent is Intent.FILE_QUERY:
                 findings = handle_file_query(text)
+                view = file_view_spec(text)  # rich file list / content view (F27)
                 reply = self.llm.complete([
                     {
                         "role": "system",
                         "content": (
                             "You are Inai. Answer the user's question about their files using "
-                            "ONLY the findings below. Be concise and helpful.\n\nFINDINGS:\n" + findings
+                            "ONLY the findings below. Be brief — a rich file view is shown to "
+                            "the user alongside your answer, so summarize rather than enumerate."
+                            "\n\nFINDINGS:\n" + findings
                         ),
                     },
                     {"role": "user", "content": text},
                 ])
-                yield TurnEvent("result", reply, {"intent": intent.value, "findings": findings[:4000]})
+                yield TurnEvent("result", reply, {
+                    "intent": intent.value,
+                    "findings": findings[:4000],
+                    "view": view,
+                })
 
             else:  # CHIT_CHAT / ACTION -> conversational reply…
                 reply = self.llm.complete([

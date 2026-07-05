@@ -57,13 +57,14 @@ export function useAssistant() {
     }
     if (ev.kind === "result" || ev.kind === "error") {
       const pid = pendingId.current;
+      const view = (ev.data.view ?? null) as ChatMessage["view"];
       setMessages((m) => {
         if (pid && m.some((x) => x.id === pid)) {
           return m.map((x) =>
-            x.id === pid ? { ...x, text: ev.text, pending: false, intent: ev.data.intent } : x,
+            x.id === pid ? { ...x, text: ev.text, pending: false, intent: ev.data.intent, view } : x,
           );
         }
-        return [...m, { id: nextId(), role: "assistant", text: ev.text, intent: ev.data.intent }];
+        return [...m, { id: nextId(), role: "assistant", text: ev.text, intent: ev.data.intent, view }];
       });
       pendingId.current = null;
       // a memory write or any turn may have changed the graph -> refetch
@@ -90,7 +91,9 @@ export function useAssistant() {
     historyLoaded.current = true;
     getHistory()
       .then((turns) =>
-        setMessages((m) => (m.length ? m : turns.map((t) => ({ id: t.id, role: t.role, text: t.content })))),
+        setMessages((m) =>
+          m.length ? m : turns.map((t) => ({ id: t.id, role: t.role, text: t.content, view: t.view ?? null })),
+        ),
       )
       .catch(() => {});
   }, []);
@@ -103,5 +106,9 @@ export function useAssistant() {
     };
   }, [connect]);
 
-  return { messages, orb, connected, graphVersion, send };
+  // Interactive views (e.g. toggling a task) mutate the graph outside a chat
+  // turn — let them request a memory-panel refresh.
+  const refreshGraph = useCallback(() => setGraphVersion((v) => v + 1), []);
+
+  return { messages, orb, connected, graphVersion, send, refreshGraph };
 }

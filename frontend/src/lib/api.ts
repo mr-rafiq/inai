@@ -21,6 +21,18 @@ export async function deleteNode(id: string): Promise<void> {
   if (!r.ok) throw new Error(`delete ${r.status}`);
 }
 
+export async function updateNode(
+  id: string,
+  patch: { name?: string; type?: string; props?: Record<string, unknown> },
+): Promise<void> {
+  const r = await fetch(`${base}/api/graph/nodes/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new Error(`update ${r.status}`);
+}
+
 export function wsUrl(): string {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   return `${proto}://${location.host}/ws`;
@@ -30,6 +42,7 @@ export interface HistoryTurn {
   id: string;
   role: "user" | "assistant";
   content: string;
+  view?: import("./types").ViewSpec | null;
 }
 
 export async function getHistory(): Promise<HistoryTurn[]> {

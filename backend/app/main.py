@@ -70,8 +70,12 @@ class HistoryStore:
             except json.JSONDecodeError:
                 log.warning("history file corrupt, starting fresh")
 
-    def append(self, role: str, content: str, turn_id: str | None = None) -> dict[str, Any]:
-        entry = {"id": turn_id or uuid.uuid4().hex[:12], "role": role, "content": content}
+    def append(
+        self, role: str, content: str, turn_id: str | None = None, view: dict | None = None
+    ) -> dict[str, Any]:
+        entry: dict[str, Any] = {"id": turn_id or uuid.uuid4().hex[:12], "role": role, "content": content}
+        if view:
+            entry["view"] = view  # rich views survive reloads
         self.turns.append(entry)
         self.path.write_text(json.dumps(self.turns, indent=1))
         return entry
@@ -197,7 +201,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None) -> Fa
         events = await state.orchestrator.collect(body.message, turn_id=user_turn["id"])
         result = next((e for e in reversed(events) if e.kind in ("result", "error")), None)
         if result:
-            state.history.append("assistant", result.text)
+            state.history.append("assistant", result.text, view=result.data.get("view"))
         return {"events": [e.to_dict() for e in events], "turn_id": user_turn["id"]}
 
     @app.get("/api/graph")
@@ -232,13 +236,15 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None) -> Fa
                     continue
                 user_turn = state.history.append("user", text)
                 final = ""
+                final_view: dict | None = None
                 async for ev in state.orchestrator.handle_turn(text, turn_id=user_turn["id"]):
                     ev.data["turn_id"] = user_turn["id"]
                     await sock.send_json(ev.to_dict())
                     if ev.kind in ("result", "error"):
                         final = ev.text
+                        final_view = ev.data.get("view")
                 if final:
-                    state.history.append("assistant", final)
+                    state.history.append("assistant", final, view=final_view)
         except WebSocketDisconnect:
             log.info("ws client disconnected")
 

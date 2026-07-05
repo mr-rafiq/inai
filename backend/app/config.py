@@ -48,8 +48,14 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _config_path() -> Path:
+    """Settings file location; INAI_CONFIG_PATH overrides for test isolation."""
+    env = os.environ.get("INAI_CONFIG_PATH")
+    return Path(env).expanduser() if env else _repo_root() / "inai.toml"
+
+
 def _load_toml() -> dict[str, Any]:
-    for candidate in (_repo_root() / "inai.toml", _repo_root() / "backend" / "inai.toml"):
+    for candidate in (_config_path(), _repo_root() / "backend" / "inai.toml"):
         if candidate.is_file():
             with candidate.open("rb") as fh:
                 data = tomllib.load(fh)
@@ -119,8 +125,8 @@ UPDATABLE_FIELDS = {"provider", "model", "fast_model", "api_base", "temperature"
 
 
 def save_config(cfg: Config) -> Path:
-    """Persist user-tunable settings to <repo>/inai.toml (never secrets)."""
-    path = _repo_root() / "inai.toml"
+    """Persist user-tunable settings to the config file (never secrets)."""
+    path = _config_path()
     lines = ["# Inai settings — managed by the app (Settings panel). Safe to edit.", "[inai]"]
     for key in sorted(UPDATABLE_FIELDS) + ["graph_backend"]:
         val = getattr(cfg, key)
