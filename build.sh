@@ -48,13 +48,15 @@ if [ -f backend/pyproject.toml ] || [ -f backend/requirements.txt ]; then
   say "Building backend (Python / FastAPI)"
   cd "$ROOT/backend"
   if command -v uv >/dev/null 2>&1; then
-    uv sync
+    [ -d .venv ] || uv venv --python 3.12 .venv || uv venv .venv
+    # dev = tests, llm = real providers via LiteLLM (Ollama/LM Studio/OpenAI/Anthropic)
+    uv pip install --python .venv -e ".[dev,llm]"
   else
     [ -d .venv ] || python3 -m venv .venv
     # shellcheck disable=SC1091
     source .venv/bin/activate
     python -m pip install --upgrade pip >/dev/null
-    if [ -f pyproject.toml ]; then pip install -e ".[dev]" 2>/dev/null || pip install -e .; fi
+    if [ -f pyproject.toml ]; then pip install -e ".[dev,llm]" 2>/dev/null || pip install -e .; fi
     [ -f requirements.txt ] && pip install -r requirements.txt
     deactivate
   fi

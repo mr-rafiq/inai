@@ -64,6 +64,10 @@ class LiteLLMClient:
             kw["api_base"] = "http://localhost:1234/v1"
         if self.cfg.api_key:
             kw["api_key"] = self.cfg.api_key
+        elif self.cfg.provider == "lmstudio":
+            # LM Studio's OpenAI-compatible server ignores the key, but the
+            # OpenAI client refuses to start without one.
+            kw["api_key"] = "lm-studio"
         return kw
 
     def complete(self, messages: list[Message], **kw) -> str:
